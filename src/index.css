@@ -1,0 +1,12 @@
+.drag-ctn {
+    position: relative;
+}
+.drag-block {
+    position: absolute;
+    cursor: pointer;
+    z-index: 2;
+}
+
+.dragging {
+    z-index: 9;
+}
