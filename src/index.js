@@ -13,20 +13,14 @@ class DragBlock {
 
         let w = this.ctn.offsetWidth - this.config.margin[0] * (this.config.col + 1)
         this.config.width = Math.floor(w / this.config.col)
-        this.occupiedList = []
+        this.occupiedList = {}
         this.dragStart = {
             row: 0,
             col: 0,
         }
-        this.bookList = []
-        this.movingCount = 0
         this.blockId = 1
         this.init()
         this.bindEvent()
-    }
-
-    divideArea() {
-        
     }
 
     init() {
@@ -34,21 +28,57 @@ class DragBlock {
         const blockList = Array.from(this.ctn.children)
         let index = 0
         for (let block of blockList) {
-            block.dataset.row = block.dataset.row ? block.dataset.row : Math.floor(index/this.config.col) + 1
-            block.dataset.col = block.dataset.col ? block.dataset.col : index % this.config.col + 1
+            let row = block.dataset.row ? block.dataset.row : Math.floor(index/this.config.col) + 1,
+                col = block.dataset.col ? block.dataset.col : index % this.config.col + 1,
+                sizex = block.dataset.sizex ? block.dataset.sizex : 1,
+                sizey = block.dataset.sizey ? block.dataset.sizey : 1
+            
+            while (this.isOccupied(row, col, sizex, sizey)) {
+                col ++
+                if (col - this.config.col > 0) {
+                    row ++
+                    col -= this.config.col
+                }
+            }
+            block.dataset.row = row
+            block.dataset.col = col
+            block.dataset.sizex = sizex
+            block.dataset.sizey = sizey
             block.id = 'block' + this.blockId++
-            this.occupiedList.push(block.dataset.row+','+block.dataset.col)
+            for (let x = 0; x < block.dataset.sizex; x++) {
+                for (let y = 0; y < block.dataset.sizey; y++) {
+                    let key = (row * 1 + y) + ',' + (col * 1 + x),
+                        id = 'tail_' + block.id
+                    if (x + y === 0) {
+                        id = block.id
+                    }
+                    this.occupiedList[key] = id
+                }
+            }
 
             block.classList.add('drag-block')
-            block.style.width = this.config.width + 'px';
-            block.style.height = this.config.height + 'px';
+            block.style.width = this.config.width * block.dataset.sizex + this.config.margin[0] * (block.dataset.sizex - 1) + 'px';
+            block.style.height = this.config.height * block.dataset.sizey + this.config.margin[1] * (block.dataset.sizey - 1) + 'px';
             block.style.left = (block.dataset.col - 1) * ( this.config.width + this.config.margin[0] ) + this.config.margin[0] + 'px';
             block.style.top = (block.dataset.row - 1) * ( this.config.height + this.config.margin[1] ) + this.config.margin[1] + 'px';
             index ++;
         }
     }
 
-    bindEvent () {
+    isOccupied(row, col, sizex = 1, sizey = 1) {
+        for (let x = 0; x < sizex; x++) {
+            for (let y = 0; y < sizey; y++) {
+                let r = row * 1 + x,
+                    c = col * 1 + y
+                if ( (r + ',' + c) in this.occupiedList) {
+                    return true
+                }
+            }
+        }
+        return false
+    }
+
+    bindEvent() {
         this.ctn.addEventListener('mousedown', (event) => {
             let block = event.target,
                 op = {
@@ -86,15 +116,8 @@ class DragBlock {
                 return false
             }
             let pos = this.calcPos(block);
-            
-            if(this.dragStart.row != pos.row || this.dragStart.col != pos.col) {
-                this.moveIn(block.id, pos)
-                if ( (this.config.mode === 'x' && pos.row != block.dataset.row) || (this.config.mode === 'y' && pos.col != block.dataset.col) ) {
-                    this.moveOut(block.id, block.dataset)
-                }
-            } else {
-                this.moveTo(block.id, pos);
-            }
+            this.getNext(block, pos)
+            this.moveNext(block.id)
            
             block.classList.remove('dragging');
             
@@ -105,29 +128,37 @@ class DragBlock {
         let x = parseFloat(block.style.left),
             y = parseFloat(block.style.top)
         
-        let col = Math.round( x / ( this.config.width + this.config.margin[0] ) ) + 1,
-            row = Math.round( y / ( this.config.height + this.config.margin[1] ) ) + 1;
-
-        return {row, col}
-    }
-
-    bookPos(id, pos) {
-        this.bookList.push([id, pos])
-    }
-
-    setPos() {
-        for (let item of this.bookList) {
-            let dom = document.getElementById(item[0])
-            dom.dataset.col = item[1].col
-            dom.dataset.row = item[1].row
+        let pos = { 
+            col: Math.round( x / ( this.config.width + this.config.margin[0] ) ) + 1,
+            row: Math.round( y / ( this.config.height + this.config.margin[1] ) ) + 1
         }
-        this.bookList = []
-        this.occupiedList = []
-        let blockList = document.querySelectorAll('.drag-block')
-        for (let i = 0; i < blockList.length; i++) {
-            this.occupiedList.push(blockList[i].dataset.row + ',' + blockList[i].dataset.col);
-        }
+        return pos
     }
+
+    getNext(block, nextPos) {
+        let pos = {},
+            originC = block.dataset.col,
+            originR = block.dataset.row
+        let {col, row} = nextPos
+        let {sizex, sizey} = block.dataset
+        
+        for (let c = 0; c < sizex; c ++) {
+            for (let r = 0; r < sizey; r ++) {
+                let id = 'tail_' + block.id
+                if (r + c === 0) {
+                    id = block.id
+                }
+
+                let from = (originR * 1 + r) + ',' + (originC * 1 + c),
+                    to = (row * 1 + r) + ',' + (col * 1 + c)
+                delete this.occupiedList[from]
+                pos[to] = id
+                
+            }
+        }
+        this.blockSort(pos)
+    }
+
 
     moveTo (id, pos) {
         let block = document.getElementById(id)
@@ -136,19 +167,40 @@ class DragBlock {
             step = {}
         step.x = (left - parseFloat(block.style.left)) / 30
         step.y = (top - parseFloat(block.style.top)) / 30
-        this.bookPos(block.id, pos)
+        block.dataset.row = pos.row
+        block.dataset.col = pos.col
         let data = {
             block: block,
             step: step,
             frame: 30
         }
-       
         window.requestAnimationFrame(this.moveAnimation(data));
+    }
+    
+    moveNext(blockId) {
+        for (let x in this.occupiedList) {
+            let id = this.occupiedList[x]
+            if (id === blockId) {
+                let [r,c] = x.split(',')
+                this.moveTo(id, {
+                    row: r,
+                    col: c
+                })
+            } else if (id && id.substr(0, 5) !== 'tail_') {
+                let {row,col} = document.getElementById(id).dataset
+                if ( row + ',' + col !== x ) {
+                    let [r,c] = x.split(',')
+                    this.moveTo(id, {
+                        row: r,
+                        col: c
+                    })
+                }
+            }
+        }
     }
 
     moveAnimation (data) {
         let self = this
-        self.movingCount++
         let {block, step, frame} = data
         return function next() {
             if (frame > 0) {
@@ -156,11 +208,6 @@ class DragBlock {
                 block.style.top = parseFloat(block.style.top) + step.y + 'px';
                 frame--;
                 window.requestAnimationFrame(next);
-            } else {
-                self.movingCount--
-                if (self.movingCount === 0) {
-                    self.setPos()
-                }
             }
         }
         
@@ -168,80 +215,84 @@ class DragBlock {
 
     removeOccupied (block) {
         let pos = block.dataset.row + ',' + block.dataset.col
-        for (let i = 0; i < this.occupiedList.length; i++) {
-            if (this.occupiedList[i] === pos) {
-                this.occupiedList.splice(i, 1);
-                break;
-            }
-        }
+        delete this.occupiedList[pos]
     }
 
-    blockSort(id, pos) {
-        let moveList = [], domList = null
+    blockSort(pos) {
+        let moveList = []
+        if (this.config.mode !== 'left') {
+            for (let i = 0; i < this.config.col; i++) {
+                moveList[i] = []
+            }
+        }
+        for (let key in this.occupiedList) { 
+            let [row, col] = key.split(',')
+            if (this.config.mode === 'x') {
+                if (!moveList[row - 1]) {
+                    moveList[row - 1] = []
+                }
+                moveList[row - 1][col - 1] = this.occupiedList[key]
+            } else if (this.config.mode === 'y') {
+                if (!moveList[col - 1]) {
+                    moveList[col - 1] = []
+                }
+                moveList[col - 1][row - 1] = this.occupiedList[key]
+            } else if (this.config.mode === 'left') {
+                let index = (row - 1) * this.config.col + (col - 1)
+                moveList[index] = this.occupiedList[key]
+            }
+        }
+        let arr = this.removeEmpty(moveList)
+        
+        this.occupiedList = {}
         if (this.config.mode === 'x') {
-            domList = document.querySelectorAll('.drag-block[data-row="' + pos.row + '"]')
-            for (let item of [...domList]) { 
-                if (item.id === id) {
-                    continue;
-                } else {
-                    moveList[item.dataset.col - 1] = item.id
-                }        
+            for (let x in pos) {
+                let [m,n] = x.split(',')
+                if (!arr[m-1]) {
+                    arr[m-1] = []
+                }
+                arr[m-1].splice(n-1, 0, pos[x])
+            }
+            for (let r = 0; r < arr.length; r ++) {
+                for (let c = 0; c < arr[r].length; c ++) {
+                    let key = (r + 1) + ',' + (c + 1)
+                    this.occupiedList[key] = arr[r][c]
+                }
             }
         } else if (this.config.mode === 'y') {
-            domList = document.querySelectorAll('.drag-block[data-col="' + pos.col + '"]')
-            for (let item of [...domList]) { 
-                if (item.id === id) {
-                    continue;
-                } else {
-                    moveList[item.dataset.row - 1] = item.id
-                }        
+            for (let x in pos) {
+                let [m,n] = x.split(',')
+                if (!arr[n-1]) {
+                    arr[n-1] = []
+                }
+                let index = m - 1
+                
+                while( (arr[n-1][index] && arr[n-1][index].substr(0, 5) === 'tail_') || pos[x].indexOf(arr[n-1][index]) >= 0 ) {
+                    index ++
+                }
+                arr[n-1].splice(index, 0, pos[x])
+            }
+            for (let c = 0; c < arr.length; c ++) {
+                for (let r = 0; r < arr[c].length; r ++) {
+                    let key = (r + 1) + ',' + (c + 1)
+                    this.occupiedList[key] = arr[c][r]
+                }
             }
         } else if (this.config.mode === 'left') {
-            domList = document.querySelectorAll('.drag-block')
-            for (let item of [...domList]) { 
-                if (item.id === id) {
-                    continue;
-                } else {
-                    let index = (item.dataset.row - 1) * this.config.col + (item.dataset.col - 1)
-                    moveList[index] = item.id
-                }        
+            for (let x in pos) {
+                let [m,n] = x.split(','),
+                    i = (m - 1) * this.config.col + (n - 1)
+                arr.splice(i, 0, pos[x])
             }
+            
+            let index = 0
+            for (let item of arr) {
+                let key = (Math.floor(index/this.config.col) + 1) + ',' + (index%this.config.col + 1)
+                this.occupiedList[key] = item
+                index++
+            }  
         }
         
-        return this.removeEmpty(moveList)
-    }
-
-    moveIn (id, pos) {
-        let dist = pos.row + ',' + pos.col
-        let moveList = this.blockSort(id, pos)
-        if (this.config.mode === 'x') {
-            moveList.splice(pos.col-1, 0, id)
-            let index = 1
-            for (let item of moveList) {
-                if (item) {
-                    this.moveTo(item, {row: pos.row, col: index++})
-                }
-            }  
-            
-        } else if (this.config.mode === 'y') {
-            moveList.splice(pos.row-1, 0, id)
-            let index = 1
-            for (let item of moveList) {
-                if (item) {
-                    this.moveTo(item, {row: index++, col: pos.col})
-                }
-            }  
-        } else if (this.config.mode === 'left') {
-            let i = (pos.row - 1) * this.config.col + (pos.col - 1)
-            moveList.splice(i, 0, id)
-            let index = 0
-            for (let item of moveList) {
-                if (item) {
-                    this.moveTo(item, {row: Math.floor(index/this.config.col) + 1, col: index%this.config.col + 1})
-                    index++
-                }
-            }  
-        }
     }
 
     moveOut(id, pos) {
@@ -266,8 +317,13 @@ class DragBlock {
     removeEmpty(arr) {
         let res = []
         for (let item of arr) {
-            if (item !== undefined) {
-                res.push(item)
+            
+            if (item instanceof Array) {
+                res.push(this.removeEmpty(item))
+            } else {
+                if (item !== undefined) {
+                    res.push(item)
+                }
             }
         }
         return res
@@ -280,19 +336,24 @@ class DragBlock {
         dom.classList.add('drag-block')
         dom.style.width = this.config.width + 'px';
         dom.style.height = this.config.height + 'px';
-        dom.dataset.col = dom.dataset.col ? dom.dataset.col : 1
-        dom.dataset.row = dom.dataset.row ? dom.dataset.row : 1
+        dom.dataset.col = 0
+        dom.dataset.row = 0
+        dom.dataset.sizex = 1
+        dom.dataset.sizey = 1
         dom.style.left = this.config.margin[0] + 'px'
         dom.style.top = this.config.margin[1] + 'px'
-        this.moveIn(dom.id, dom.dataset)
+        let pos = this.calcPos(dom)
+        this.getNext(block, pos)
+        this.moveNext(dom.id)
     }
 
     removeBlock(id) {
         let b = document.getElementById(id)
         if (b) {
-            let pos = b.dataset
+            this.removeOccupied(b)
             this.ctn.removeChild(b)
-            this.moveOut(id, pos)
+            this.blockSort({})
+            this.moveNext('')
         }
     }
 }
